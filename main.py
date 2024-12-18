@@ -1,13 +1,15 @@
 import json
-import csv
 import time
+import os
 
 import urllib3
 import requests
 
 FIGMA_API_URL = "https://api.figma.com/v1/files"
-FIGMA_TOKEN = "<>"
-FILE_ID = "<>"
+FIGMA_TOKEN = os.getenv("figma_token")
+FILE_ID = os.getenv("figma_file_id")
+
+VDS_IDENTIFIER = "[VDS]"
 
 urllib3.disable_warnings()
 
@@ -24,7 +26,7 @@ def fetch_figma_file(file_id, token):
         dict: The JSON data of the Figma file.
     """
     headers = {"X-FIGMA-TOKEN": token}
-    response = requests.get(f"{FIGMA_API_URL}/{file_id}", headers=headers)
+    response = requests.get(f"{FIGMA_API_URL}/{file_id}/components", headers=headers)
 
     if response.status_code == 200:
         return response.json()
@@ -34,6 +36,7 @@ def fetch_figma_file(file_id, token):
         return None
 
 
+# not used right now , but good for nested component search
 def find_components(node, components=[]):
     """
     Recursively traverse the Figma JSON structure to find all components.
@@ -59,6 +62,23 @@ def find_components(node, components=[]):
     return components
 
 
+def filter_vds_components(components):
+    """
+        Filters components where any 'name' key value starts with '[VDS]' in the top-level,
+        'containing_frame', or 'containingStateGroup'.
+        """
+    filtered = []
+    for component in components:
+        if (
+                component.get("name", "").startswith(VDS_IDENTIFIER) or
+                component.get("containing_frame", {}).get("name", "").startswith(VDS_IDENTIFIER) or
+                component.get("containing_frame", {}).get("containingStateGroup", {}).get("name", "").startswith(
+                    VDS_IDENTIFIER)
+        ):
+            filtered.append(component)
+    return filtered
+
+
 if __name__ == '__main__':
 
     start_time = time.time()
@@ -66,26 +86,10 @@ if __name__ == '__main__':
     # Fetch the Figma file
     figma_data = fetch_figma_file(FILE_ID, FIGMA_TOKEN)
 
-    if figma_data:
-        # # Load the JSON file from json
-        with open("figma.json", "w") as file:
-            json.dump(figma_data, file, indent=4)
-        #
-        # # Start traversal from the document root
-        # components = find_components(figma_data.get("document"))
-        #
-        # # Output the components found
-        # print(f"Found {len(components)} components:")
-        # # Save the components to a new JSON file
-        # with open("components_list2.json", "w", encoding="utf-8") as output_file:
-        #     json.dump(components, output_file, indent=4, ensure_ascii=False)
-        #
-        # # Save the components to a CSV file
-        # csv_file_name = "components_list2.csv"
-        # with open(csv_file_name, mode="w", newline="", encoding="utf-8") as csv_file:
-        #     writer = csv.DictWriter(csv_file, fieldnames=["name", "id"])
-        #     writer.writeheader()
-        #     writer.writerows(components)
+    if figma_data and figma_data.get("meta"):
+        vds_components = filter_vds_components(figma_data["meta"]["components"])
+        with open("vds-components.json", "w") as file:
+            json.dump(vds_components, file, indent=4)
 
     # total execution time
     end_time = time.time()
